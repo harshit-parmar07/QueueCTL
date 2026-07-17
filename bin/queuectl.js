@@ -9,7 +9,12 @@ const {
   registerWorker,
   deregisterWorker,
   getNextJob,
-  updateJobState
+  updateJobState,
+  getConfig,
+  setConfig,
+  failJob,
+  killJob,
+  retryDeadJob
 } = require('../db');
 
 const program = new Command();
@@ -46,7 +51,8 @@ program
       process.exit(1);
     }
 
-    const maxRetries = jobData.max_retries !== undefined ? Number(jobData.max_retries) : 3;
+    const configMaxRetries = Number(getConfig('max_retries', '3'));
+    const maxRetries = jobData.max_retries !== undefined ? Number(jobData.max_retries) : configMaxRetries;
     if (isNaN(maxRetries) || !Number.isInteger(maxRetries) || maxRetries < 0) {
       console.error('Error: Field "max_retries" must be a non-negative integer');
       process.exit(1);
@@ -61,7 +67,8 @@ program
       attempts: 0,
       max_retries: maxRetries,
       created_at: timestamp,
-      updated_at: timestamp
+      updated_at: timestamp,
+      run_at: null
     };
 
     try {
@@ -168,12 +175,12 @@ workerCmd
         await new Promise((resolve) => {
           exec(job.command, (err) => {
             if (err) {
-              const attempts = job.attempts;
-              const maxRetries = job.max_retries;
-              if (attempts < maxRetries) {
-                updateJobState(job.id, 'failed');
+              const baseDelay = Number(getConfig('base_delay', '2'));
+              if (job.attempts < job.max_retries) {
+                const delay = baseDelay * (job.attempts ** 2);
+                failJob(job.id, delay);
               } else {
-                updateJobState(job.id, 'dead');
+                killJob(job.id);
               }
             } else {
               updateJobState(job.id, 'completed');
@@ -185,6 +192,39 @@ workerCmd
       } else {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+    }
+  });
+
+const configCmd = program.command('config');
+
+configCmd
+  .command('set <key> <value>')
+  .description('Set a configuration value')
+  .action((key, value) => {
+    setConfig(key, value);
+    console.log(`Configured ${key} = ${value}`);
+  });
+
+const dlqCmd = program.command('dlq');
+
+dlqCmd
+  .command('list')
+  .description('List all dead jobs')
+  .action(() => {
+    const deadJobs = db.prepare("SELECT * FROM jobs WHERE state = 'dead' ORDER BY created_at ASC").all();
+    console.log(JSON.stringify(deadJobs, null, 2));
+  });
+
+dlqCmd
+  .command('retry <jobId>')
+  .description('Retry a dead job')
+  .action((jobId) => {
+    const success = retryDeadJob(jobId);
+    if (success) {
+      console.log(`Job ${jobId} reset to pending`);
+    } else {
+      console.error(`Error: Job ${jobId} is not in the DLQ`);
+      process.exit(1);
     }
   });
 
