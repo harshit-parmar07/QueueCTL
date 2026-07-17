@@ -201,8 +201,29 @@ configCmd
   .command('set <key> <value>')
   .description('Set a configuration value')
   .action((key, value) => {
-    setConfig(key, value);
-    console.log(`Configured ${key} = ${value}`);
+    let normalizedKey = key;
+    if (key === 'max-retries' || key === 'max_retries') {
+      normalizedKey = 'max_retries';
+      const num = Number(value);
+      if (isNaN(num) || !Number.isInteger(num) || num < 0) {
+        console.error('Error: max_retries must be a non-negative integer');
+        process.exit(1);
+      }
+      setConfig(normalizedKey, String(num));
+      console.log(`Configured max_retries = ${num}`);
+    } else if (key === 'base-delay' || key === 'base_delay') {
+      normalizedKey = 'base_delay';
+      const num = Number(value);
+      if (isNaN(num) || !Number.isInteger(num) || num < 0) {
+        console.error('Error: base_delay must be a non-negative integer');
+        process.exit(1);
+      }
+      setConfig(normalizedKey, String(num));
+      console.log(`Configured base_delay = ${num}`);
+    } else {
+      setConfig(normalizedKey, value);
+      console.log(`Configured ${normalizedKey} = ${value}`);
+    }
   });
 
 const dlqCmd = program.command('dlq');
@@ -226,6 +247,41 @@ dlqCmd
       console.error(`Error: Job ${jobId} is not in the DLQ`);
       process.exit(1);
     }
+  });
+
+program
+  .command('status')
+  .description('Show summary of all job states and active workers')
+  .action(() => {
+    const states = ['pending', 'processing', 'completed', 'failed', 'dead'];
+    const summary = {};
+    for (const state of states) {
+      const res = db.prepare('SELECT COUNT(*) as count FROM jobs WHERE state = ?').get(state);
+      summary[state] = res.count;
+    }
+    const activeWorkers = db.prepare('SELECT COUNT(*) as count FROM workers').get().count;
+
+    console.log('=== Queue Status ===');
+    console.log(`Pending:    ${summary.pending}`);
+    console.log(`Processing: ${summary.processing}`);
+    console.log(`Completed:  ${summary.completed}`);
+    console.log(`Failed:     ${summary.failed}`);
+    console.log(`Dead (DLQ): ${summary.dead}`);
+    console.log('=== Worker Status ===');
+    console.log(`Active Workers: ${activeWorkers}`);
+  });
+
+program
+  .command('list-state <stateName>')
+  .description('List jobs by their state')
+  .action((stateName) => {
+    const validStates = ['pending', 'processing', 'completed', 'failed', 'dead'];
+    if (!validStates.includes(stateName)) {
+      console.error(`Error: Invalid state name "${stateName}". Valid states: ${validStates.join(', ')}`);
+      process.exit(1);
+    }
+    const jobs = db.prepare('SELECT * FROM jobs WHERE state = ? ORDER BY created_at ASC').all(stateName);
+    console.log(JSON.stringify(jobs, null, 2));
   });
 
 program.parse(process.argv);
