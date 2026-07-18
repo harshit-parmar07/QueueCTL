@@ -7,10 +7,12 @@ QueueCTL is a lightweight, production-grade, local background job queue CLI buil
 ## 1. Setup and Installation
 
 ### Prerequisites
+
 - Node.js (v18 or higher recommended)
 - npm
 
 ### Installation Steps
+
 1. Navigate to the project root directory:
    ```bash
    cd queuectl-backend
@@ -23,14 +25,16 @@ QueueCTL is a lightweight, production-grade, local background job queue CLI buil
    ```bash
    npm link
    ```
-   *(Note: You may need `sudo npm link` depending on your global node installation permissions.)*
+   _(Note: You may need `sudo npm link` depending on your global node installation permissions.)_
 
 ---
 
 ## 2. CLI Usage Examples
 
 ### Enqueue a Job
+
 Adds a new command payload to the queue.
+
 - **Command**:
   ```bash
   queuectl enqueue '{"id": "job1", "command": "sleep 2"}'
@@ -41,7 +45,9 @@ Adds a new command payload to the queue.
   ```
 
 ### Start Workers
+
 Spawns background worker instances to process enqueued jobs.
+
 - **Command**:
   ```bash
   queuectl worker start --count 3
@@ -52,7 +58,9 @@ Spawns background worker instances to process enqueued jobs.
   ```
 
 ### Stop Workers Gracefully
+
 Signals all active workers to terminate. Workers finish their active job execution before exiting.
+
 - **Command**:
   ```bash
   queuectl worker stop
@@ -64,7 +72,9 @@ Signals all active workers to terminate. Workers finish their active job executi
   ```
 
 ### Check Queue Status
+
 Displays current job state counts and active worker numbers.
+
 - **Command**:
   ```bash
   queuectl status
@@ -82,7 +92,9 @@ Displays current job state counts and active worker numbers.
   ```
 
 ### Filter Jobs by State
+
 Lists jobs currently holding a specific state name in JSON format.
+
 - **Command**:
   ```bash
   queuectl list-state completed
@@ -104,7 +116,9 @@ Lists jobs currently holding a specific state name in JSON format.
   ```
 
 ### Set Configuration Values
+
 Updates retry threshold and backoff delay baseline.
+
 - **Command**:
   ```bash
   queuectl config set max-retries 5
@@ -115,7 +129,9 @@ Updates retry threshold and backoff delay baseline.
   ```
 
 ### List Dead Letter Queue (DLQ)
+
 Lists jobs that have exhausted all retries and are marked `dead`.
+
 - **Command**:
   ```bash
   queuectl dlq list
@@ -137,7 +153,9 @@ Lists jobs that have exhausted all retries and are marked `dead`.
   ```
 
 ### Retry a DLQ Job
+
 Resets a dead job back to pending state so it can be re-executed.
+
 - **Command**:
   ```bash
   queuectl dlq retry job2
@@ -157,6 +175,7 @@ Resets a dead job back to pending state so it can be re-executed.
    │  (enqueue, status, list-state, config, dlq list/retry) │
    └───────────────────────────┬────────────────────────────┘
                                │ Reads/Writes
+                               |
                                ▼
    ┌────────────────────────────────────────────────────────┐
    │                  SQLite Database (queue.db)            │
@@ -173,6 +192,7 @@ Resets a dead job back to pending state so it can be re-executed.
 ```
 
 ### Job Lifecycle States
+
 - **`pending`**: Initial state of enqueued jobs. Eligible to be picked up by workers.
 - **`processing`**: Under active execution by a worker child process.
 - **`completed`**: Finished running with exit code `0`.
@@ -180,12 +200,15 @@ Resets a dead job back to pending state so it can be re-executed.
 - **`dead`**: Failed execution, and attempts met or exceeded `max_retries`. Moved to DLQ.
 
 ### Data Persistence
+
 Persisted in local SQLite database `queue.db` within the project root folder.
+
 - **`jobs`**: Stores job metadata, execution attempts, states, and scheduling information (`run_at`).
 - **`workers`**: Records active worker PIDs to monitor capacity and manage graceful terminations.
 - **`config`**: Holds dynamic parameters (`max_retries`, `base_delay`).
 
 ### Concurrency and Locking Strategy
+
 Under multi-worker conditions, race-condition safety is achieved using SQLite `BEGIN IMMEDIATE` transaction execution in `better-sqlite3`. When a worker checks for a job, it locks the SQLite database exclusively for writes, reads the oldest available job, and immediately marks it as `processing` before committing the transaction and unlocking. This ensures that no two workers can read or execute the same job.
 
 ---
@@ -193,10 +216,12 @@ Under multi-worker conditions, race-condition safety is achieved using SQLite `B
 ## 4. Assumptions & Trade-offs
 
 ### SQLite Database Storage
+
 - **Choice**: Storing state in SQLite instead of a JSON file or PostgreSQL server.
 - **Trade-off**: While Redis or PostgreSQL are standard for massive network-distributed processing, SQLite offers zero-configuration local persistence, instant startup, and transactional guarantees (`BEGIN IMMEDIATE` row-locking) ideal for single-node CLI utilities.
 
 ### Process-Based Workers
+
 - **Choice**: Launching worker processes using Node's `child_process.spawn(..., { detached: true })` and tracking PIDs in SQLite.
 - **Trade-off**: Detached child processes run outside the lifecycle of the parent terminal CLI. By using a database table to keep track of active worker PIDs, we avoid requiring heavier daemon managers (like PM2 or systemd), maintaining portability while ensuring full management from `queuectl`.
 
@@ -207,10 +232,13 @@ Under multi-worker conditions, race-condition safety is achieved using SQLite `B
 We provide an automated verification suite that runs enqueuing, execution loops, retries, and restarts.
 
 To run the verification suite:
+
 ```bash
 node test.js
 ```
+
 The test suite will print progress outputs and exit with code `0` if all assertions pass:
+
 ```
 Independent flow verification completed successfully!
 ```
@@ -219,4 +247,4 @@ Independent flow verification completed successfully!
 
 ## 6. Demonstration Video
 
-
+**[Watch the QueueCTL CLI Demonstration on Loom](https://www.loom.com/share/3186b5fa1a314637819537f18ef8242d)**
